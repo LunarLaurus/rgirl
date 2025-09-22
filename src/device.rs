@@ -193,4 +193,57 @@ impl Device {
     pub fn write_wide(&mut self, address: u16, byte: u16) {
         self.cpu.write_wide(address, byte)
     }
+
+    // Custom
+
+    /// Called by the main CPU thread after stepping the GPU.
+    /// If the GPU just entered VBlank, write the mirror region and increment frame counter.
+    pub fn maybe_write_mirror(&mut self) {
+        // NOTE: use cpu.mmu.gpu and cpu.mmu.write_mirror() since Device stores a CPU.
+        if self.cpu.mmu.gpu.take_vblank() {
+            self.cpu.mmu.write_mirror();
+        }
+    }
+
+    /// Set the current joypad mask (u8). Mask bit = 1 means pressed.
+    pub fn set_joypad_mask(&mut self, mask: u8) {
+        // Directly update the keypad that lives inside MMU.
+        // This avoids trying to write to IO registers and is immediate.
+        self.cpu.mmu.keypad.set_mask(mask);
+    }
+
+    /// Reset the emulator to a clean power-on state.
+    pub fn reset(&mut self) {
+        // Prefer calling CPU::reset() which should reset CPU registers, MMU, GPU, timers, etc.
+        // If CPU::reset() exists it will be used; otherwise implement it (see suggested CPU::reset below).
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.cpu.reset();
+        }));
+    }
+
+    /// Return a copy of the current mirror buffer. Requires MMU::get_mirror() -> &[u8].
+    pub fn get_mirror(&self) -> Vec<u8> {
+        // assumes mmu has a get_mirror() -> &[u8]
+        self.cpu.mmu.get_mirror().to_vec()
+    }
+
+    /// Step the emulator until the next frame (VBlank) and return the last GPU frame data.
+    /// This mirrors the behavior used by the UI thread.
+    pub fn step_frame(&mut self) -> Vec<u8> {
+        // The waitticks used in the main loop represent ~16ms worth of cycles,
+        // but here we simply run cycles until GPU update occurs.
+        loop {
+            // Run a small chunk (the original do_cycle returns cycles consumed)
+            let _cycles = self.do_cycle();
+
+            // If GPU entered vblank, write mirror
+            self.maybe_write_mirror();
+
+            // If GPU updated (frame rendered), return its image data
+            if self.check_and_reset_gpu_updated() {
+                return self.get_gpu_data().to_vec();
+            }
+        }
+    }
+
 }

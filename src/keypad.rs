@@ -39,6 +39,32 @@ impl Keypad {
         self.update();
     }
 
+        /// Set keypad state from an 8-bit mask.
+    /// Bit mapping (mask bit = 1 means pressed):
+    ///  bit0 = Right
+    ///  bit1 = Left
+    ///  bit2 = Up
+    ///  bit3 = Down
+    ///  bit4 = A
+    ///  bit5 = B
+    ///  bit6 = Select
+    ///  bit7 = Start
+    pub fn set_mask(&mut self, mask: u8) {
+        // Lower nibble -> directions (row0)
+        let dir_mask = mask & 0x0F;
+        // Upper nibble -> buttons (row1)
+        let btn_mask = (mask >> 4) & 0x0F;
+
+        // In this Keypad implementation 0 = pressed, 1 = released for bits within row0/row1
+        // So compute row values by starting with all 1s (0x0F) and clearing bits for pressed keys.
+        self.row0 = 0x0F & !(dir_mask & 0x0F);
+        self.row1 = 0x0F & !(btn_mask & 0x0F);
+
+        // Keep the high nibble of data (bits 4/5 define selection) — we don't change it here.
+        // Call update() to refresh self.data and interrupt flags.
+        self.update();
+    }
+
     fn update(&mut self) {
         let old_values = self.data & 0xF;
         let mut new_values = 0xF;

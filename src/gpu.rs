@@ -61,6 +61,7 @@ pub struct GPU {
     pub updated: bool,
     pub interrupt: u8,
     pub gbmode: GbMode,
+    pub vblank_start: bool,
     hblanking: bool,
     first_frame: bool,
 }
@@ -110,6 +111,7 @@ impl GPU {
             csprit_ind: 0,
             csprit: [[[0u8; 3]; 4]; 8],
             vrambank: 0,
+            vblank_start: false,
             hblanking: false,
             first_frame: false,
         }
@@ -186,6 +188,7 @@ impl GPU {
                 self.interrupt |= 0x01;
                 self.updated = true;
                 self.first_frame = false;
+                self.vblank_start = true;
                 self.m1_inte
             }
             2 => self.m2_inte,
@@ -199,6 +202,16 @@ impl GPU {
             _ => false,
         } {
             self.interrupt |= 0x02;
+        }
+    }
+
+    /// Returns true once when we have just entered VBlank; consumes the flag.
+    pub fn take_vblank(&mut self) -> bool {
+        if self.vblank_start {
+            self.vblank_start = false;
+            true
+        } else {
+            false
         }
     }
 

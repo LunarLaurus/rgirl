@@ -1,0 +1,17 @@
+[package]
+name = "rgirl_py"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rgirl_env"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.21", features = ["extension-module"] }
+
+rgirl = { path = "../", default-features = false }
+
+[profile.release]
+opt-level = "z"
+lto = true

@@ -1,5 +1,5 @@
 [package]
-name = "rboy"
+name = "rgirl"
 version = "0.2.0"
 authors = [ "mvdnes <git@mathijs.vd-nes.nl>" ]
 edition = "2018"
@@ -19,7 +19,7 @@ ciborium = "0.2.2"
 gui = [ "clap", "cpal", "glium", "winit" ]
 
 [[bin]]
-name = "rboy"
+name = "rgirl"
 test = false
 doc = false
 required-features = [ "gui" ]

@@ -55,6 +55,33 @@ impl CPU {
         })
     }
 
+        /// Reset CPU and subcomponents to a known power-on state.
+    /// This should make the machine behave like a freshly powered-on GameBoy (not a soft reset).
+    pub fn reset(&mut self) {
+        // Reset registers (example names; adapt to your CPU register fields)
+        self.regs = Default::default(); // if you have a default for registers
+        self.sp = 0xFFFE; // example SP reset value; adjust as needed
+        self.pc = 0x0100; // typical Game Boy entry point
+
+        // Reset MMU — restore RAM and IO reset values
+        self.mmu.reset(); // implement MMU::reset to set RAM/IO to initial state
+
+        // Reset GPU/LCD state
+        self.mmu.gpu = crate::gpu::GPU::new(); // or GPU::new_cgb() depending on mode
+
+        // Reset timers, serial, interrupt flags
+        self.mmu.timer_reset(); // implement to zero timers, divider, etc.
+
+        // Reset sound
+        self.mmu.sound = None; // off by default; let higher-level reattach audio
+
+        // Clear any internal CPU state (halt/stop flags)
+        self.halted = false;
+        self.stopped = false;
+
+        // Reinitialize other peripherals as required
+    }
+
     pub fn do_cycle(&mut self) -> u32 {
         let ticks = self.docycle() * 4;
         return self.mmu.do_cycle(ticks);

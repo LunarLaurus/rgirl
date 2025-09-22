@@ -11,6 +11,59 @@ use serde::{Deserialize, Serialize};
 const WRAM_SIZE: usize = 0x8000;
 const ZRAM_SIZE: usize = 0x7F;
 
+// Custom
+// Pokemon G/S Memory
+pub const MIRROR_FRAME_COUNTER: usize = 0x000;
+pub const MIRROR_MAP_BANK: usize = 0x004;
+pub const MIRROR_MAP_ID: usize = 0x005;
+pub const MIRROR_PLAYER_X: usize = 0x006;
+pub const MIRROR_PLAYER_Y: usize = 0x007;
+pub const MIRROR_PARTY_COUNT: usize = 0x008;
+pub const MIRROR_PARTY_START: usize = 0x009; // 6 × 11 bytes = 66 bytes
+pub const MIRROR_IN_BATTLE: usize = 0x049;
+pub const MIRROR_ENEMY_SPECIES: usize = 0x04A;
+pub const MIRROR_ENEMY_LEVEL: usize = 0x04B;
+pub const MIRROR_ENEMY_HP: usize = 0x04C; // 2 bytes
+pub const MIRROR_MONEY: usize = 0x04E; // 3 bytes
+pub const MIRROR_BADGES: usize = 0x051;
+pub const MIRROR_SIZE: usize = 0x052; // 80 bytes
+
+/* 
+Mirror snapshot layout (little-endian) — for writing to fixed WRAM mirror region (e.g. 0xC000).
+Goals:
+ - All multi-byte fields use little-endian.
+ - Single-byte fields unchanged.
+ - Fixed offsets so snapshots are deterministic.
+ - Default contains only "visible" player-observable fields (fairness).
+ - Layout is expandable: reserved/padded space and a hidden/debug region at the end.
+
+Layout (offsets are mirror-relative):
+ 0x000  4  Frame counter        -> u32 LE (increments each frame)
+ 0x004  1  Map bank             -> u8
+ 0x005  1  Map ID               -> u8
+ 0x006  1  Player X             -> u8
+ 0x007  1  Player Y             -> u8
+ 0x008  1  Party count          -> u8
+ 0x009 66  Party slots (6×11)   -> per slot: species, level, cur HP, max HP, status, moves (mostly u8)
+ 0x049  1  In battle            -> u8 (non-zero = in battle)
+ 0x04A  1  Enemy species        -> u8
+ 0x04B  1  Enemy level          -> u8
+ 0x04C  2  Enemy cur HP         -> u16 LE
+ 0x04E  2  Enemy max HP         -> u16 LE
+ 0x050  4  Money                -> u32 LE (convert from 3-byte BCD in MMU)
+ 0x054  1  Badges               -> u8 (bitfield)
+ 0x055  3  Padding / reserved   -> reserved for future expansion
+ 0x058 16  Hidden / debug       -> optional: RNG, IVs, internal flags, etc.
+
+Total size: 0x068 (104 bytes)
+
+Notes:
+ - Keep the frame counter increment and mirror write atomic in MMU::write_mirror().
+ - Expose MIRROR_SIZE and offsets as pub constants so Python/agents don't hardcode numbers.
+ - For fairness, default bindings should expose only this "visible" mirror. Hidden/debug fields may be appended after MIRROR_SIZE or exposed via a flag.
+*/
+pub const MIRROR_SIZE: usize = 0x068
+
 #[derive(PartialEq, Serialize, Deserialize)]
 enum DMAType {
     NoDMA,
@@ -43,6 +96,10 @@ pub struct MMU {
     gbspeed: GbSpeed,
     speed_switch_req: bool,
     undocumented_cgb_regs: [u8; 3], // 0xFF72, 0xFF73, 0xFF75
+
+    // Custom
+    wram_mirror: [u8; MIRROR_SIZE],
+    frame_counter: u32,
 }
 
 fn fill_random(slice: &mut [u8], start: u32) {
@@ -404,5 +461,75 @@ impl MMU {
         } else {
             self.hdma_len -= 1;
         }
+    }
+
+    // Custom
+    pub fn write_mirror(&mut self) {
+        // --- frame counter ---
+        self.frame_counter = self.frame_counter.wrapping_add(1);
+        self.mirror[0x000..0x004].copy_from_slice(&self.frame_counter.to_le_bytes());
+
+        // --- map & player ---
+        self.mirror[0x004] = self.wram[0xDA00]; // map bank
+        self.mirror[0x005] = self.wram[0xDA01]; // map ID
+        self.mirror[0x006] = self.wram[0xD20D]; // X
+        self.mirror[0x007] = self.wram[0xD20E]; // Y
+
+        // --- party ---
+        self.mirror[0x008] = self.wram[0xDA22]; // party count
+        for i in 0..6 {
+            let src = 0xDA2A + i*11;
+            let dst = 0x009 + i*11;
+            self.mirror[dst..dst+11].copy_from_slice(&self.wram[src..src+11]);
+        }
+
+        // --- battle state ---
+        self.mirror[0x049] = self.wram[0xD116];      // in battle
+        self.mirror[0x04A] = self.wram[0xD0ED];      // enemy species
+        self.mirror[0x04B] = self.wram[0xD0FC];      // enemy level
+
+        let enemy_cur_hp = u16::from_be_bytes([self.wram[0xD0FF], self.wram[0xD100]]);
+        self.mirror[0x04C..0x04E].copy_from_slice(&enemy_cur_hp.to_le_bytes());
+
+        let enemy_max_hp = u16::from_be_bytes([self.wram[0xD101], self.wram[0xD102]]);
+        self.mirror[0x04E..0x050].copy_from_slice(&enemy_max_hp.to_le_bytes());
+
+        // --- money (3-byte BCD -> u32 LE) ---
+        let bcd = &self.wram[0xD573..0xD576];
+        let money = (bcd[0] as u32)*10000 + (bcd[1] as u32)*100 + (bcd[2] as u32);
+        self.mirror[0x050..0x054].copy_from_slice(&money.to_le_bytes());
+
+        // --- badges ---
+        self.mirror[0x054] = self.wram[0xD57C];
+
+        // --- padding / reserved ---
+        self.mirror[0x055..0x058].fill(0);
+
+        // --- optional hidden/debug ---
+        // Example: copy RNG state for debugging
+        self.mirror[0x058..0x05A].copy_from_slice(&self.wram[0xFFD3..0xFFD5]);
+        // remaining bytes (0x05A..0x068) can be used later for IVs, encounter cooldowns, etc.
+    }
+
+    pub fn get_mirror(&self) -> &[u8] {
+        &self.mirror[..MIRROR_SIZE]
+    }
+
+    pub fn reset(&mut self) {
+        // Clear WRAM/HRAM/VRAM/OAM to expected power-on values
+        for b in self.wram.iter_mut() { *b = 0; }
+        for b in self.vram.iter_mut() { *b = 0; }
+        for b in self.oam.iter_mut()  { *b = 0; }
+        // Reset IO registers to their default values (implement individually)
+        self.io_reset();
+        // Reset keypad state
+        self.keypad = crate::keypad::Keypad::new();
+        // Reset GPU and sound if needed (but GPU::new() will be called by CPU reset above)
+    }
+
+    fn io_reset(&mut self) {
+        // Write default power-on values for IO addresses if you want
+        // e.g. self.write_byte(0xFF00, 0xFF); // JOYP
+        // implement the small set of default IO registers your emulator requires
     }
 }

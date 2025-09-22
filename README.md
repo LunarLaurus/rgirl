@@ -1,4 +1,4 @@
-# RBoy
+# RGirl
 
 A Gameboy Color Emulator written in Rust
 
@@ -8,15 +8,15 @@ A Gameboy Color Emulator written in Rust
 You can clone this repository and build it using either the `make` command or
 `cargo build --release --features=gui`. Running the emulator can be done either via
 `cargo run --release --features=gui`, or by running the generated binary found in `target/release`.
-You can copy the executable named `rboy` or `rboy.exe` to some sort of binary directory such as
+You can copy the executable named `rgirl` or `rgirl.exe` to some sort of binary directory such as
 `~/.local/bin/` in linux or something under the `PATH` in windows.
 
-Then you can explore the ability of the emulator by `rboy --help`. Which outputs 
+Then you can explore the ability of the emulator by `rgirl --help`. Which outputs 
 
 ```
 A Gameboy Colour emulator written in Rust
 
-Usage: rboy [OPTIONS] <filename>
+Usage: rgirl [OPTIONS] <filename>
 
 Arguments:
   <filename>  Sets the ROM file to load

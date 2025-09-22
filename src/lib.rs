@@ -1,4 +1,4 @@
-#![crate_name = "rboy"]
+#![crate_name = "rgirl"]
 #![crate_type = "lib"]
 
 pub use crate::gpu::{SCREEN_H, SCREEN_W};

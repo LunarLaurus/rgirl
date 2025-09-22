@@ -69,7 +69,7 @@ impl GbPrinter {
         use std::fs::OpenOptions;
         use std::io::Write;
 
-        let filename = format!("rboy_print_{:03}.pgm", self.printcount);
+        let filename = format!("rgirl_print_{:03}.pgm", self.printcount);
         self.printcount += 1;
 
         let image_height = self.datacount / 40;

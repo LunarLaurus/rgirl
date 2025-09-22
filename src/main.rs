@@ -1,8 +1,8 @@
-#![crate_name = "rboy"]
+#![crate_name = "rgirl"]
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample};
-use rboy::device::Device;
+use rgirl::device::Device;
 use std::io::{self, Read};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
 use std::sync::{Arc, Mutex};
@@ -18,8 +18,8 @@ struct RenderOptions {
 }
 
 enum GBEvent {
-    KeyUp(rboy::KeypadKey),
-    KeyDown(rboy::KeypadKey),
+    KeyUp(rgirl::KeypadKey),
+    KeyDown(rgirl::KeypadKey),
     SpeedUp,
     SpeedDown,
 }
@@ -29,12 +29,12 @@ fn create_window_builder(romname: &str) -> winit::window::WindowBuilder {
     use winit::platform::windows::WindowBuilderExtWindows;
     return winit::window::WindowBuilder::new()
         .with_drag_and_drop(false)
-        .with_title("RBoy - ".to_owned() + romname);
+        .with_title("RGirl - ".to_owned() + romname);
 }
 
 #[cfg(not(target_os = "windows"))]
 fn create_window_builder(romname: &str) -> winit::window::WindowBuilder {
-    return winit::window::WindowBuilder::new().with_title("RBoy - ".to_owned() + romname);
+    return winit::window::WindowBuilder::new().with_title("RGirl - ".to_owned() + romname);
 }
 
 #[derive(Debug)]
@@ -75,7 +75,7 @@ fn main() {
 }
 
 fn real_main() -> i32 {
-    let matches = clap::Command::new("rboy")
+    let matches = clap::Command::new("rgirl")
         .version("0.1")
         .author("Mathijs van de Nes")
         .about("A Gameboy Colour emulator written in Rust")
@@ -180,7 +180,7 @@ fn real_main() -> i32 {
         let player = CpalPlayer::get();
         match player {
             Some((v, s)) => {
-                cpu.enable_audio(Box::new(v) as Box<dyn rboy::AudioPlayer>, !is_new_start);
+                cpu.enable_audio(Box::new(v) as Box<dyn rgirl::AudioPlayer>, !is_new_start);
                 cpal_audio_stream = Some(s);
             }
             None => {
@@ -205,8 +205,8 @@ fn real_main() -> i32 {
         &display,
         glium::texture::UncompressedFloatFormat::U8U8U8,
         glium::texture::MipmapsOption::NoMipmap,
-        rboy::SCREEN_W as u32,
-        rboy::SCREEN_H as u32,
+        rgirl::SCREEN_W as u32,
+        rgirl::SCREEN_H as u32,
     )
     .unwrap();
 
@@ -274,17 +274,17 @@ fn real_main() -> i32 {
     EXITCODE_SUCCESS
 }
 
-fn winit_to_keypad(key: winit::keyboard::Key<&str>) -> Option<rboy::KeypadKey> {
+fn winit_to_keypad(key: winit::keyboard::Key<&str>) -> Option<rgirl::KeypadKey> {
     use winit::keyboard::{Key, NamedKey};
     match key {
-        Key::Character("Z" | "z") => Some(rboy::KeypadKey::A),
-        Key::Character("X" | "x") => Some(rboy::KeypadKey::B),
-        Key::Named(NamedKey::ArrowUp) => Some(rboy::KeypadKey::Up),
-        Key::Named(NamedKey::ArrowDown) => Some(rboy::KeypadKey::Down),
-        Key::Named(NamedKey::ArrowLeft) => Some(rboy::KeypadKey::Left),
-        Key::Named(NamedKey::ArrowRight) => Some(rboy::KeypadKey::Right),
-        Key::Named(NamedKey::Space) => Some(rboy::KeypadKey::Select),
-        Key::Named(NamedKey::Enter) => Some(rboy::KeypadKey::Start),
+        Key::Character("Z" | "z") => Some(rgirl::KeypadKey::A),
+        Key::Character("X" | "x") => Some(rgirl::KeypadKey::B),
+        Key::Named(NamedKey::ArrowUp) => Some(rgirl::KeypadKey::Up),
+        Key::Named(NamedKey::ArrowDown) => Some(rgirl::KeypadKey::Down),
+        Key::Named(NamedKey::ArrowLeft) => Some(rgirl::KeypadKey::Left),
+        Key::Named(NamedKey::ArrowRight) => Some(rgirl::KeypadKey::Right),
+        Key::Named(NamedKey::Space) => Some(rgirl::KeypadKey::Select),
+        Key::Named(NamedKey::Enter) => Some(rgirl::KeypadKey::Start),
         _ => None,
     }
 }
@@ -307,16 +307,16 @@ fn recalculate_screen<
 
     let rawimage2d = glium::texture::RawImage2d {
         data: std::borrow::Cow::Borrowed(datavec),
-        width: rboy::SCREEN_W as u32,
-        height: rboy::SCREEN_H as u32,
+        width: rgirl::SCREEN_W as u32,
+        height: rgirl::SCREEN_H as u32,
         format: glium::texture::ClientFormat::U8U8U8,
     };
     texture.write(
         glium::Rect {
             left: 0,
             bottom: 0,
-            width: rboy::SCREEN_W as u32,
-            height: rboy::SCREEN_H as u32,
+            width: rgirl::SCREEN_W as u32,
+            height: rgirl::SCREEN_H as u32,
         },
         rawimage2d,
     );
@@ -372,6 +372,9 @@ fn run_cpu(mut cpu: Box<Device>, sender: SyncSender<Vec<u8>>, receiver: Receiver
     'outer: loop {
         while ticks < waitticks {
             ticks += cpu.do_cycle();
+            // Custom
+            // NEW: if GPU just entered VBlank, write the memory mirror (increments frame counter)
+            cpu.maybe_write_mirror();
             if cpu.check_and_reset_gpu_updated() {
                 let data = cpu.get_gpu_data().to_vec();
                 if let Err(TrySendError::Disconnected(..)) = sender.try_send(data) {
@@ -417,8 +420,8 @@ fn timer_periodic(ms: u64) -> Receiver<()> {
 
 fn set_window_size(window: &winit::window::Window, scale: u32) {
     let _ = window.request_inner_size(winit::dpi::LogicalSize::<u32>::from((
-        rboy::SCREEN_W as u32 * scale,
-        rboy::SCREEN_H as u32 * scale,
+        rgirl::SCREEN_W as u32 * scale,
+        rgirl::SCREEN_H as u32 * scale,
     )));
 }
 
@@ -579,7 +582,7 @@ fn cpal_thread<T: Sample + FromSample<f32>>(
     }
 }
 
-impl rboy::AudioPlayer for CpalPlayer {
+impl rgirl::AudioPlayer for CpalPlayer {
     fn play(&mut self, buf_left: &[f32], buf_right: &[f32]) {
         debug_assert!(buf_left.len() == buf_right.len());
 
@@ -606,7 +609,7 @@ impl rboy::AudioPlayer for CpalPlayer {
 
 struct NullAudioPlayer {}
 
-impl rboy::AudioPlayer for NullAudioPlayer {
+impl rgirl::AudioPlayer for NullAudioPlayer {
     fn play(&mut self, _buf_left: &[f32], _buf_right: &[f32]) {
         // Do nothing
     }
